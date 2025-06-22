@@ -1,0 +1,54 @@
+name: DevOps Pipeline
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions: write-all
+
+jobs:
+  checkov:
+    name: IaC Scan with Checkov
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run Checkov using Docker
+        run: |
+          docker run --tty --volume "$(pwd):/scan" bridgecrew/checkov -d /scan --soft-fail
+
+  trivy:
+    name: Code Scan with Trivy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run Trivy using Docker
+        run: |
+          docker run --tty --volume "$(pwd):/scan" aquasec/trivy fs /scan
+
+  sonarcloud:
+    name: SonarCloud Analysis
+    if: github.repository_owner == 'jamil18474'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: 17
+          distribution: zulu
+
+      - name: Analyze with SonarCloud
+        run: |
+          ./mvnw verify -Dlicense.skip=true --no-transfer-progress || true
+          ./mvnw jacoco:report
+          ./mvnw sonar:sonar -B -Dsonar.projectKey=Jamil18474_jpetstore-6 -Dsonar.organization=jamil18474 -Dsonar.host.url=https://sonarcloud.io -Dsonar.login=$SONAR_TOKEN
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
