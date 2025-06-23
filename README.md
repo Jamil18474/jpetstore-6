@@ -1,84 +1,119 @@
-MyBatis JPetStore
-=================
+# Pipeline DevOps 
 
-[![Java CI](https://github.com/mybatis/jpetstore-6/actions/workflows/ci.yaml/badge.svg)](https://github.com/mybatis/jpetstore-6/actions/workflows/ci.yaml)
-[![Container Support](https://github.com/mybatis/jpetstore-6/actions/workflows/support.yaml/badge.svg)](https://github.com/mybatis/jpetstore-6/actions/workflows/support.yaml)
-[![Coverage Status](https://coveralls.io/repos/github/mybatis/jpetstore-6/badge.svg?branch=master)](https://coveralls.io/github/mybatis/jpetstore-6?branch=master)
-[![License](https://img.shields.io/:license-apache-brightgreen.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
+Un pipeline DevOps complet intégrant l'analyse de sécurité et la qualité du code pour une intégration et déploiement continus.
+J'ai utilisé Github Actions car je l'utilise souvent et que c'est pratique à intégrer vu que j'utilise un dépôt git.
+Je n'ai pas eu besoin d'installer des extensions d'IDE.
 
-![mybatis-jpetstore](https://mybatis.org/images/mybatis-logo.png)
 
-JPetStore 6 is a full web application built on top of MyBatis 3, Spring 5 and Stripes.
+## Prérequis
 
-Essentials
-----------
+Docker [Docker](https://www.docker.com/)
 
-* [See the docs](http://www.mybatis.org/jpetstore-6)
+Checkov  [Checkov](https://www.checkov.io/)  
 
-## Other versions that you may want to know about
+Trivy  [Trivy](https://trivy.dev/)  
 
-- JPetstore on top of Spring, Spring MVC, MyBatis 3, and Spring Security https://github.com/making/spring-jpetstore
-- JPetstore with Vaadin and Spring Boot with Java Config https://github.com/igor-baiborodine/jpetstore-6-vaadin-spring-boot
-- JPetstore on MyBatis Spring Boot Starter https://github.com/kazuki43zoo/mybatis-spring-boot-jpetstore
+Sonarcloud  [SonarCloud](https://sonarcloud.io/)
 
-## Run on Application Server
-Running JPetStore sample under Tomcat (using the [cargo-maven2-plugin](https://codehaus-cargo.github.io/cargo/Maven2+plugin.html)).
+## 📊 Résultats et Rapports
 
-- Clone this repository
+### Résultats Checkov
+- Problèmes de sécurité d'infrastructure
+- Violations des bonnes pratiques
 
-  ```
-  $ git clone https://github.com/mybatis/jpetstore-6.git
-  ```
+On utilise docker pour lancer le scan Checkov.
 
-- Build war file
+```yaml
+jobs:
+  checkov:
+    name: IaC Scan with Checkov
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
 
-  ```
-  $ cd jpetstore-6
-  $ ./mvnw clean package
-  ```
-
-- Startup the Tomcat server and deploy web application
-
-  ```
-  $ ./mvnw cargo:run -P tomcat90
-  ```
-
-  > Note:
-  >
-  > We provide maven profiles per application server as follow:
-  >
-  > | Profile        | Description |
-  > | -------------- | ----------- |
-  > | tomcat90       | Running under the Tomcat 9.0 |
-  > | tomcat85       | Running under the Tomcat 8.5 |
-  > | tomee80        | Running under the TomEE 8.0(Java EE 8) |
-  > | tomee71        | Running under the TomEE 7.1(Java EE 7) |
-  > | wildfly26      | Running under the WildFly 26(Java EE 8) |
-  > | wildfly13      | Running under the WildFly 13(Java EE 7) |
-  > | liberty-ee8    | Running under the WebSphere Liberty(Java EE 8) |
-  > | liberty-ee7    | Running under the WebSphere Liberty(Java EE 7) |
-  > | jetty          | Running under the Jetty 9 |
-  > | glassfish5     | Running under the GlassFish 5(Java EE 8) |
-  > | glassfish4     | Running under the GlassFish 4(Java EE 7) |
-  > | resin          | Running under the Resin 4 |
-
-- Run application in browser http://localhost:8080/jpetstore/ 
-- Press Ctrl-C to stop the server.
-
-## Run on Docker
-```
-docker build . -t jpetstore
-docker run -p 8080:8080 jpetstore
-```
-or with Docker Compose:
-```
-docker compose up -d
+      - name: Run Checkov using Docker
+        run: |
+          docker run --tty --volume "$(pwd):/scan" bridgecrew/checkov -d /scan --soft-fail
 ```
 
-## Try integration tests
+![Checkov_results](checkov_results.png)
 
-Perform integration tests for screen transition.
+### Résultats Trivy
+- Vulnérabilités connues
+- Problèmes de dépendances
 
+On utilise docker pour lancer le scan Trivy.
+
+```yaml
+  trivy:
+    name: Code Scan with Trivy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run Trivy using Docker
+        run: |
+          docker run --tty --volume "$(pwd):/scan" aquasec/trivy fs /scan
 ```
-$ ./mvnw clean verify -P tomcat90
+
+On a le rapport de synthèse des résultats.
+
+![Trivy_results1](trivy_results1.png)
+
+On a le rapport détaillé des résultats.
+
+![Trivy_results2](trivy_results2.png)
+
+### Résultats SonarCloud
+- Métriques de qualité du code
+- Rapports de couverture de tests
+
+Il faut d'abord créer un projet sur SonarCloud à partir du dépôt git et on récupère les informations du projet : donc le projectkey du projet et l'organization, on récupère également le token de SONARCLOUD et on crée un token personnel classique de Github et on les met en secret dans le repo GitHub.
+
+```yaml
+  sonarcloud:
+    name: SonarCloud Analysis
+    if: github.repository_owner == 'jamil18474'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: 17
+          distribution: zulu
+
+      - name: Analyze with SonarCloud
+        run: |
+          ./mvnw verify -Dlicense.skip=true --no-transfer-progress || true
+          ./mvnw jacoco:report
+          ./mvnw sonar:sonar -B -Dsonar.projectKey=Jamil18474_jpetstore-6 -Dsonar.organization=jamil18474 -Dsonar.host.url=https://sonarcloud.io -Dsonar.login=$SONAR_TOKEN
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 ```
+
+On remarque que sur Github Actions, le job de SonarCloud a été un succès et disponible sur le tableau de bord de SonarCloud
+
+![SonarCloud_Success](sonarcloud_success.png)
+
+On voit le tableau de bord du projet sur SonarCloud avec le Quality Gate qui est bien passé.
+
+![SonarCloud_Overview](sonarcloud_overview.png)
+
+On remarque qu'on a 3 nouveaux issues.
+
+![SonarCloud_LatestActivity](sonarcloud_latestactivity.png)
+
+On a les issues du projet avec des filtres spécifiques.
+
+![SonarCloud_Issues](sonarcloud_issues.png)
+
+## 🚀 Fonctionnalités
+
+- **🔒 Sécurité Infrastructure as Code** - Scan Checkov
+- **🛡️ Détection de Vulnérabilités** - Scan de sécurité Trivy
+- **📊 Analyse Qualité du Code** - Intégration SonarCloud
